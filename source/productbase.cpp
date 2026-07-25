@@ -93,7 +93,7 @@ void ProductBase::initializeCommonUi()
     tbl->setColumnWidth(6, 110);   // Expiry
     tbl->setColumnWidth(7,  90);   // Status
     tbl->setColumnWidth(8, 110);   // Supplier
-    tbl->setColumnWidth(9,  90);   // SKU
+    tbl->setColumnWidth(9,  150);   // SKU
     tbl->horizontalHeader()->setSectionResizeMode(10, QHeaderView::Stretch); // Action
 
     populateCategoryFilter();

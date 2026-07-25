@@ -200,6 +200,23 @@ const QVector<QString> kStatements = {
     // value, since these should simply never carry an expiry_date at all.
     QStringLiteral(R"sql(UPDATE products SET expiry_date = NULL WHERE category IN ('Household', 'Stationery', 'Music') AND expiry_date IS NOT NULL;)sql"),
 
+    // ── products: migrate old-format SKUs to the new SKU-XX-### scheme ──
+    // Old seed/legacy SKUs look like 'SKU001'..'SKU050' (plain "SKU" +
+    // sequence number, no relation to the product itself). The dialog now
+    // generates 'SKU-<first 2 letters of product name>-<random 3-digit
+    // number>' instead (see ProductStaffDialog::generateSku() in
+    // productstaff.cpp). This statement re-keys every row still sitting on
+    // an old-style value so existing databases pick up the new look
+    // without a full reset. It's safe to run on every launch: new-format
+    // SKUs start with 'SKU-' (not 'SKU0'), so once a row is migrated the
+    // WHERE clause no longer matches it and the statement becomes a no-op.
+    QStringLiteral(R"sql(
+    UPDATE products
+    SET sku = 'SKU-' || upper(substr(product_name, 1, 2)) || '-' ||
+              CAST(100 + (ABS(RANDOM()) % 900) AS TEXT)
+    WHERE sku LIKE 'SKU0%' AND product_name IS NOT NULL AND length(product_name) >= 2;
+    )sql"),
+
 
     // ── suppliers ────────────────────────────────────────────────
     QStringLiteral(R"sql(

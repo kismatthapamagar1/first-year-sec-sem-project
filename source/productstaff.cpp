@@ -276,18 +276,24 @@ void ProductStaffDialog::populateFields(const ProductRecord &p)
 
 QString ProductStaffDialog::generateSku()
 {
-    static QMap<QString,QString> catCode = {
-        {"Groceries","GR"}, {"Vegetables","VG"}, {"Fruits","FR"},
-        {"Dairy","DY"}, {"Cosmetics","CS"}, {"Cleaning","CL"},
-        {"Household","HH"}, {"Snacks","SN"}, {"Beverages","BV"},
-        {"Bakery","BK"}, {"Stationery","ST"}, {"Meat","MT"},
-        {"Breakfast","BR"}, {"Music","MU"}, {"Other","OT"}
-    };
+    // First 2 letters of the product name, uppercased (e.g. "Shirt" -> "SH").
+    // Falls back to padding with "X" if the name is empty or has fewer than
+    // 2 letter characters typed so far, so Generate never produces a
+    // malformed SKU.
+    QString name = txtName ? txtName->text().trimmed() : QString();
 
-    QString cat  = cmbCategory ? cmbCategory->currentText() : "Other";
-    QString code = catCode.value(cat, "OT");
-    quint32 num  = QRandomGenerator::global()->bounded(100u, 999u);
-    return QString("SKU-%1-%2").arg(code).arg(num, 3, 10, QChar('0'));
+    QString lettersOnly;
+    for (const QChar &c : name) {
+        if (c.isLetter())
+            lettersOnly += c.toUpper();
+        if (lettersOnly.length() == 2)
+            break;
+    }
+    while (lettersOnly.length() < 2)
+        lettersOnly += "X";
+
+    quint32 num = QRandomGenerator::global()->bounded(100u, 999u);
+    return QString("SKU-%1-%2").arg(lettersOnly).arg(num, 3, 10, QChar('0'));
 }
 
 void ProductStaffDialog::onGenerateSku()
