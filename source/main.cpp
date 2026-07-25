@@ -166,6 +166,41 @@ const QVector<QString> kStatements = {
     QStringLiteral(R"sql(ALTER TABLE products ADD COLUMN is_deleted INTEGER DEFAULT 0;)sql"),
     QStringLiteral(R"sql(ALTER TABLE products ADD COLUMN deleted_at TEXT;)sql"),
 
+    // ── products: repair pre-existing databases ─────────────────
+    // The block above only seeds a *fresh* bazar1.db (INSERT OR IGNORE
+    // never touches a row that already exists). Anyone who already had a
+    // bazar1.db from before this fix — e.g. a teammate who pulled the
+    // updated source but kept their existing local database — would
+    // otherwise keep the old, already-past, hardcoded expiry dates
+    // forever. These UPDATEs run on every launch and are safe to repeat:
+    // each one is keyed to the *exact* original buggy value (sku + old
+    // expiry_date), so it only ever touches a row still sitting in that
+    // untouched, never-fixed state. Once a row is repaired (or was never
+    // affected because it was seeded fresh already), the WHERE clause no
+    // longer matches and the statement becomes a no-op.
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+2 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU004' AND expiry_date = '2026-06-15';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+1 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU005' AND expiry_date = '2026-06-11';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+16 days'), is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU006' AND expiry_date = '2026-06-20';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now'),             is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU007' AND expiry_date = '2026-06-08';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+21 days'), is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU008' AND expiry_date = '2026-07-01';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+4 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU010' AND expiry_date = '2026-06-09';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+3 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU024' AND expiry_date = '2026-09-01';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+23 days'), is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU025' AND expiry_date = '2026-08-01';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+1 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU033' AND expiry_date = '2026-06-06';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+5 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU034' AND expiry_date = '2026-06-07';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+5 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU035' AND expiry_date = '2026-06-09';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+1 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU036' AND expiry_date = '2026-06-06';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+2 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU037' AND expiry_date = '2026-06-06';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+16 days'), is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU038' AND expiry_date = '2026-06-15';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+3 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU039' AND expiry_date = '2026-06-10';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+11 days'), is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU040' AND expiry_date = '2026-06-12';)sql"),
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = date('now', '+1 days'),  is_deleted = 0, deleted_at = NULL WHERE sku = 'SKU041' AND expiry_date = '2026-06-08';)sql"),
+
+    // Non-perishable categories: general rule, not tied to a specific old
+    // value, since these should simply never carry an expiry_date at all.
+    QStringLiteral(R"sql(UPDATE products SET expiry_date = NULL WHERE category IN ('Household', 'Stationery', 'Music') AND expiry_date IS NOT NULL;)sql"),
+
+
     // ── suppliers ────────────────────────────────────────────────
     QStringLiteral(R"sql(
     CREATE TABLE IF NOT EXISTS suppliers (
