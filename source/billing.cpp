@@ -13,6 +13,8 @@
 #include <QPdfWriter>
 #include <QStandardPaths>
 #include <QDateTime>
+#include <QCompleter>
+#include <QSet>
 
 Billing::Billing(QWidget *parent)
     : QMainWindow(parent)
@@ -39,7 +41,32 @@ Billing::Billing(QWidget *parent)
     connect(ui->btnGenerateBill, &QPushButton::clicked, this, &Billing::generateBill);
     connect(ui->btnBackToDashboard, &QPushButton::clicked, this, &Billing::backToDashboard);
 
+    // Let the same field double as a product-name search box: as the
+    // cashier types, matching product names pop up so they don't need to
+    // know the SKU/barcode by heart. Picking a suggestion (or typing the
+    // full name and pressing Enter) resolves to that product just like a
+    // scanned barcode would (see addProductToBill()).
+    setupNameCompleter();
+
+    ui->barcodeInput->setPlaceholderText(tr("Scan barcode, or type SKU / product name..."));
     ui->barcodeInput->setFocus();
+}
+
+void Billing::setupNameCompleter()
+{
+    QStringList names;
+    QSqlQuery q("SELECT product_name FROM products "
+                "WHERE (is_deleted IS NULL OR is_deleted = 0) "
+                "  AND product_name IS NOT NULL AND TRIM(product_name) <> '' "
+                "ORDER BY product_name ASC");
+    while (q.next())
+        names << q.value(0).toString();
+
+    auto *completer = new QCompleter(names, this);
+    completer->setCaseSensitivity(Qt::CaseInsensitive);
+    completer->setFilterMode(Qt::MatchContains);   // matches anywhere in the name, not just the start
+    completer->setCompletionMode(QCompleter::PopupCompletion);
+    ui->barcodeInput->setCompleter(completer);
 }
 
 Billing::~Billing()
@@ -78,10 +105,13 @@ void Billing::onBarcodeScanned()
 
 void Billing::addProductToBill(const QString &code)
 {
-    // If this SKU is already on the bill, just bump its quantity by 1
-    // instead of adding a duplicate row (handles re-scanning the same item).
+    // If this product is already on the bill, just bump its quantity by 1
+    // instead of adding a duplicate row (handles re-scanning the same
+    // barcode, or re-searching/re-selecting the same product by name).
     for (int r = 0; r < ui->billTable->rowCount(); ++r) {
-        if (ui->billTable->item(r, ColSku)->text() == code) {
+        const bool matchesSku  = ui->billTable->item(r, ColSku)->text().compare(code, Qt::CaseInsensitive) == 0;
+        const bool matchesName = ui->billTable->item(r, ColName)->text().compare(code, Qt::CaseInsensitive) == 0;
+        if (matchesSku || matchesName) {
             auto *spin = qobject_cast<QDoubleSpinBox *>(ui->billTable->cellWidget(r, ColQty));
             if (spin)
                 spin->setValue(spin->value() + 1);
@@ -91,7 +121,8 @@ void Billing::addProductToBill(const QString &code)
 
     QSqlQuery query;
     query.prepare("SELECT id, product_name, unit, price, stock, sku FROM products "
-                  "WHERE sku = :code OR id = :code LIMIT 1");
+                  "WHERE (sku = :code OR id = :code OR product_name = :code COLLATE NOCASE) "
+                  "  AND (is_deleted IS NULL OR is_deleted = 0) LIMIT 1");
     query.bindValue(":code", code);
 
     if (!query.exec() || !query.next()) {
@@ -130,14 +161,30 @@ void Billing::addProductToBill(const QString &code)
     stockItem->setData(Qt::UserRole, stock);
     ui->billTable->setItem(row, ColStock, stockItem);
 
-    // Quantity spin box: 2 decimals so weighted units like "kg" or "litre"
-    // can be entered fractionally (e.g. 2.5 kg); whole-unit products
-    // (pieces, dozen, box...) just get typed as whole numbers.
+    // Quantity spin box: only units that are genuinely sold in fractional
+    // amounts (weight/volume/length — "kg", "litre", etc.) get decimals,
+    // so 2.5 kg is possible. Discrete/countable units (pieces, dozen,
+    // box, bottle...) are locked to whole numbers — you can't sell half
+    // a bottle or a third of a dozen.
+    static const QSet<QString> fractionalUnits = {"kg", "g", "litre", "ml", "meter"};
+    const bool allowFraction = fractionalUnits.contains(unit.trimmed().toLower());
+
     auto *qtySpin = new QDoubleSpinBox;
-    qtySpin->setDecimals(2);
-    qtySpin->setMinimum(0.01);
+    qtySpin->setStyleSheet(
+        "QDoubleSpinBox { background-color: #ffffff; color: #4a1626; "
+        "border: 1px solid #660033; border-radius: 3px; }");
+    if (allowFraction) {
+        qtySpin->setDecimals(2);
+        qtySpin->setSingleStep(0.10);
+        qtySpin->setMinimum(0.01);
+        qtySpin->setValue(1.0);
+    } else {
+        qtySpin->setDecimals(0);
+        qtySpin->setSingleStep(1);
+        qtySpin->setMinimum(1);
+        qtySpin->setValue(1);
+    }
     qtySpin->setMaximum(stock);
-    qtySpin->setValue(1.0);
     ui->billTable->setCellWidget(row, ColQty, qtySpin);
     connect(qtySpin, &QDoubleSpinBox::valueChanged, this, [this, qtySpin]() {
         for (int r = 0; r < ui->billTable->rowCount(); ++r) {

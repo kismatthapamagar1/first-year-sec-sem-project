@@ -16,7 +16,7 @@
   <property name="styleSheet">
    <string notr="true">
 QWidget {
-    background-color: #F7F4F5;
+    background-color: #4d0026;
     font-family: &quot;Segoe UI&quot;, sans-serif;
     font-size: 13px;
     color: #4A0F2B;
@@ -150,7 +150,7 @@ QLabel#lblSubtitle {
         <cursorShape>PointingHandCursor</cursorShape>
        </property>
        <property name="styleSheet">
-        <string notr="true">QPushButton { background-color: #8E44AD; color: white; border: none; border-radius: 6px; padding: 6px 16px; font-weight: bold; } QPushButton:hover { background-color: #7d3c98; }</string>
+        <string notr="true">QPushButton { background-color: #7d3c98; color: white; border: none; border-radius: 6px; padding: 6px 16px; font-weight: bold; } QPushButton:hover { background-color: #7d3c98; }</string>
        </property>
        <property name="text">
         <string>🗑  Recycle Bin</string>

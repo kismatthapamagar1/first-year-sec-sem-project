@@ -28,8 +28,8 @@ private:
     void addProductToBill(const QString &code);
     void recalcRowPrice(int row);
     void recalcTotal();
+    void setupNameCompleter();
 
-    // column indices for ui->billTable
     enum BillColumn {
         ColSku = 0,
         ColName,
@@ -42,4 +42,4 @@ private:
     };
 };
 
-#endif // BILLING_H
+#endif
