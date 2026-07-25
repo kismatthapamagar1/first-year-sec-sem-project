@@ -80,6 +80,9 @@ set(PROJECT_SOURCES
        source/productstaff.cpp
        include/productstaff.h
        ui/productstaff.ui
+       source/productrecyclebin.cpp
+              include/productrecyclebin.h
+              ui/productrecyclebin.ui
        source/reportdb.cpp
        include/reportdb.h
        source/stockservice.cpp
@@ -90,6 +93,9 @@ if(QT_VERSION_MAJOR GREATER_EQUAL 6)
     qt_add_executable(Sajilo-Bazarr
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
+        ui/productrecyclebin.ui
+        source/productrecyclebin.cpp
+        include/productrecyclebin.h
 
     )
 else()

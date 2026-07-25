@@ -16,6 +16,8 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QLayout>
 #include <QLabel>
 #include <QHeaderView>
 #include <QDate>
@@ -123,7 +125,7 @@ ProductRecord ProductBase::fetchById(int id)
     QSqlQuery q;
     q.prepare(
         "SELECT id, product_name, category, unit, price, stock, "
-        "       expiry_date, status, supplier, sku "
+        "       expiry_date, status, supplier, sku, is_deleted, deleted_at "
         "FROM products WHERE id = :id");
     q.bindValue(":id", id);
     if (q.exec() && q.next()) {
@@ -137,11 +139,44 @@ ProductRecord ProductBase::fetchById(int id)
         p.setStatus(q.value(7).toString());
         p.setSupplier(q.value(8).toString());
         p.setSku(q.value(9).toString());
+        p.setIsDeleted(q.value(10).toInt() != 0);
+        p.setDeletedAt(q.value(11).toString());
     }
     return p;
 }
 
-bool ProductBase::deleteProductFromDb(int id) const
+// ── Recycle Bin: soft delete / restore / permanent delete ──────────
+bool ProductBase::softDeleteProductFromDb(int id) const
+{
+    QSqlQuery q;
+    q.prepare(
+        "UPDATE products "
+        "SET is_deleted = 1, deleted_at = datetime('now', 'localtime') "
+        "WHERE id = :id");
+    q.bindValue(":id", id);
+    if (!q.exec()) {
+        QMessageBox::critical(const_cast<ProductBase*>(this), "Database Error", q.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool ProductBase::restoreProductFromDb(int id) const
+{
+    QSqlQuery q;
+    q.prepare(
+        "UPDATE products "
+        "SET is_deleted = 0, deleted_at = NULL "
+        "WHERE id = :id");
+    q.bindValue(":id", id);
+    if (!q.exec()) {
+        QMessageBox::critical(const_cast<ProductBase*>(this), "Database Error", q.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool ProductBase::permanentDeleteProductFromDb(int id) const
 {
     QSqlQuery q;
     q.prepare("DELETE FROM products WHERE id = :id");
@@ -153,6 +188,38 @@ bool ProductBase::deleteProductFromDb(int id) const
     return true;
 }
 
+// ── Auto-delete already-expired products ────────────────────────────
+// Soft-deletes (is_deleted = 1, same as a manual delete) every active
+// product whose expiry_date is a valid, already-passed date. Products
+// with no expiry_date set (NULL or blank) can never match this WHERE
+// clause, so a product with no expiry simply never auto-expires — it
+// only ever leaves the active list via a manual Delete. Nothing is
+// lost either way: a wrongly-dated product can still be restored from
+// the Recycle Bin.
+int ProductBase::autoRemoveExpiredProducts() const
+{
+    QSqlQuery q;
+    q.prepare(
+        "UPDATE products "
+        "SET is_deleted = 1, deleted_at = datetime('now', 'localtime') "
+        "WHERE (is_deleted IS NULL OR is_deleted = 0) "
+        "  AND expiry_date IS NOT NULL AND TRIM(expiry_date) <> '' "
+        "  AND date(expiry_date) < date('now')"
+        );
+
+    if (!q.exec()) {
+        qWarning() << "autoRemoveExpiredProducts: query failed —" << q.lastError().text();
+        return 0;
+    }
+
+    const int removed = q.numRowsAffected();
+    if (removed > 0) {
+        qInfo() << "autoRemoveExpiredProducts: moved" << removed
+                << "expired product(s) to the Recycle Bin.";
+    }
+    return removed;
+}
+
 QList<ProductRecord> ProductBase::fetchProducts(const QString &search, const QString &category,
                                                  int limit, int offset,
                                                  bool expiringSoonOnly) const
@@ -161,8 +228,14 @@ QList<ProductRecord> ProductBase::fetchProducts(const QString &search, const QSt
 
     QString sql =
         "SELECT id, product_name, category, unit, price, stock, "
-        "       expiry_date, status, supplier, sku "
+        "       expiry_date, status, supplier, sku, is_deleted, deleted_at "
         "FROM products WHERE 1=1";
+
+    // Active pages (Product/ProductStaff/FrontProduct) only ever see
+    // non-deleted rows; the Recycle Bin page (showDeletedOnly() == true)
+    // only ever sees soft-deleted rows. Same query, one flag.
+    sql += showDeletedOnly() ? " AND is_deleted = 1"
+                              : " AND (is_deleted IS NULL OR is_deleted = 0)";
 
     if (!search.isEmpty())
         sql += " AND (product_name LIKE :search OR sku LIKE :search)";
@@ -205,6 +278,8 @@ QList<ProductRecord> ProductBase::fetchProducts(const QString &search, const QSt
         p.setStatus(q.value(7).toString());
         p.setSupplier(q.value(8).toString());
         p.setSku(q.value(9).toString());
+        p.setIsDeleted(q.value(10).toInt() != 0);
+        p.setDeletedAt(q.value(11).toString());
         list.append(p);
     }
     return list;
@@ -214,6 +289,9 @@ int ProductBase::countProducts(const QString &search, const QString &category,
                                 bool expiringSoonOnly) const
 {
     QString sql = "SELECT COUNT(*) FROM products WHERE 1=1";
+
+    sql += showDeletedOnly() ? " AND is_deleted = 1"
+                              : " AND (is_deleted IS NULL OR is_deleted = 0)";
 
     if (!search.isEmpty())
         sql += " AND (product_name LIKE :search OR sku LIKE :search)";
@@ -260,15 +338,59 @@ QString ProductBase::currentCategoryFilter() const
                : categoryFilter()->currentText();
 }
 
-QString ProductBase::formatExpiryText(const ProductRecord &p, int /*daysLeft*/) const
+bool ProductBase::expiringSoonFilterActive() const
 {
-    // Default (Product/admin page): just show the raw date, no warnings.
-    return p.expiryDate().isEmpty() ? QStringLiteral("—") : p.expiryDate();
+    return m_chkExpiringSoon && m_chkExpiringSoon->isChecked();
 }
 
-void ProductBase::decorateExpiryCell(QTableWidgetItem * /*item*/, int /*daysLeft*/) const
+QString ProductBase::formatExpiryText(const ProductRecord &p, int daysLeft) const
 {
-    // Default: no colour-coding. Only ProductStaff turns this on.
+    if (p.expiryDate().isEmpty())
+        return QStringLiteral("—");
+
+    if (daysLeft == INT_MIN)
+        return p.expiryDate();
+    if (daysLeft < 0)
+        return QStringLiteral("⛔ Expired");
+    if (daysLeft == 0)
+        return QStringLiteral("⛔ Today");
+    if (daysLeft == 1)
+        return QStringLiteral("⛔ Tomorrow");
+    if (daysLeft <= expiryWarningWindowDays())
+        return QString("⚠ %1 days").arg(daysLeft);
+
+    return p.expiryDate();
+}
+
+void ProductBase::decorateExpiryCell(QTableWidgetItem *item, int daysLeft) const
+{
+    if (daysLeft == INT_MIN)
+        return; // no expiry date set → leave the "—" cell plain
+
+    if (daysLeft <= 1) {
+        item->setForeground(QColor("#C0392B"));
+        item->setBackground(QColor("#FDEDEC"));
+        QFont f; f.setBold(true);
+        item->setFont(f);
+    } else if (daysLeft <= expiryWarningWindowDays()) {
+        item->setForeground(QColor("#856404"));
+        item->setBackground(QColor("#FFF3CD"));
+    }
+}
+
+void ProductBase::setupExpiringSoonFilter()
+{
+    m_chkExpiringSoon = new QCheckBox(
+        QString("⚠ Expiring Soon (≤%1 days)").arg(expiryWarningWindowDays()), this);
+
+    if (auto *filterLayout = categoryFilter()->parentWidget()
+                                 ? categoryFilter()->parentWidget()->layout()
+                                 : nullptr) {
+        filterLayout->addWidget(m_chkExpiringSoon);
+    }
+
+    connect(m_chkExpiringSoon, &QCheckBox::toggled,
+            this,              &ProductBase::onExpiringSoonToggled);
 }
 
 void ProductBase::loadProducts()
@@ -436,6 +558,12 @@ void ProductBase::onPrevPage()
     }
 }
 
+void ProductBase::onExpiringSoonToggled(bool /*checked*/)
+{
+    m_currentPage = 0;   // new filter → back to page 1
+    loadProducts();
+}
+
 void ProductBase::onDeleteProduct()
 {
     auto *btn = qobject_cast<QPushButton*>(sender());
@@ -447,13 +575,50 @@ void ProductBase::onDeleteProduct()
     auto ans = QMessageBox::question(
         this, "Confirm Delete",
         QString("Delete <b>%1</b> (SKU: %2)?<br>"
+                "It will be moved to the Recycle Bin, where it can be "
+                "restored later or removed permanently.")
+            .arg(p.name(), p.sku()),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+
+    if (ans == QMessageBox::Yes && softDeleteProductFromDb(id)) {
+        statusBarLabel()->setText(QString("🗑  '%1' moved to Recycle Bin.").arg(p.name()));
+        loadProducts();
+    }
+}
+
+void ProductBase::onRestoreProduct()
+{
+    auto *btn = qobject_cast<QPushButton*>(sender());
+    if (!btn) return;
+
+    int id = btn->property("productId").toInt();
+    ProductRecord p = fetchById(id);
+
+    if (restoreProductFromDb(id)) {
+        statusBarLabel()->setText(QString("♻  '%1' restored.").arg(p.name()));
+        loadProducts();
+    }
+}
+
+void ProductBase::onPermanentDeleteProduct()
+{
+    auto *btn = qobject_cast<QPushButton*>(sender());
+    if (!btn) return;
+
+    int id = btn->property("productId").toInt();
+    ProductRecord p = fetchById(id);
+
+    auto ans = QMessageBox::question(
+        this, "Delete Permanently",
+        QString("Permanently delete <b>%1</b> (SKU: %2)?<br>"
                 "<span style='color:red;'>This action cannot be undone.</span>")
             .arg(p.name(), p.sku()),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
 
-    if (ans == QMessageBox::Yes && deleteProductFromDb(id)) {
-        statusBarLabel()->setText(QString("🗑  '%1' deleted.").arg(p.name()));
+    if (ans == QMessageBox::Yes && permanentDeleteProductFromDb(id)) {
+        statusBarLabel()->setText(QString("🗑  '%1' permanently deleted.").arg(p.name()));
         loadProducts();
     }
 }

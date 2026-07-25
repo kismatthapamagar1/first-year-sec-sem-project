@@ -186,6 +186,19 @@ QCheckBox::indicator:checked {
       </spacer>
      </item>
      <item>
+      <widget class="QPushButton" name="btnRecycleBin">
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton { background-color: #8E44AD; color: white; border: none; border-radius: 6px; padding: 6px 16px; font-weight: bold; } QPushButton:hover { background-color: #7d3c98; }</string>
+       </property>
+       <property name="text">
+        <string>🗑  Recycle Bin</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="btnAddProduct">
        <property name="cursor">
         <cursorShape>PointingHandCursor</cursorShape>

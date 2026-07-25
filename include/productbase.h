@@ -13,6 +13,7 @@ class QLineEdit;
 class QComboBox;
 class QPushButton;
 class QLabel;
+class QCheckBox;
 
 // ═══════════════════════════════════════════════════════════════════
 //  ProductRecord  —  ENCAPSULATION
@@ -38,6 +39,10 @@ public:
     QString supplier()   const { return m_supplier; }
     QString sku()        const { return m_sku; }
 
+    // ── Recycle Bin fields ──────────────────────────────────────
+    bool    isDeleted()  const { return m_isDeleted; }
+    QString deletedAt()  const { return m_deletedAt; }
+
     void setId(int v)                  { m_id = v; }
     void setName(const QString &v)     { m_name = v; }
     void setCategory(const QString &v) { m_category = v; }
@@ -48,6 +53,8 @@ public:
     void setStatus(const QString &v)   { m_status = v; }
     void setSupplier(const QString &v) { m_supplier = v; }
     void setSku(const QString &v)      { m_sku = v; }
+    void setIsDeleted(bool v)          { m_isDeleted = v; }
+    void setDeletedAt(const QString &v) { m_deletedAt = v; }
 
     // Days remaining until expiry (negative = already expired).
     // Returns INT_MIN when there is no usable expiry date.
@@ -64,6 +71,8 @@ private:
     QString m_status;
     QString m_supplier;
     QString m_sku;
+    bool    m_isDeleted = false;
+    QString m_deletedAt;    // "yyyy-MM-dd hh:mm:ss", empty if not deleted
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -92,11 +101,12 @@ private:
 //       functions cannot be safely dispatched to a derived class
 //       from inside the base class's own constructor.
 //
-//  Everything that is specific to the expiry-warning system
-//  (colours, the "Expiring Soon" checkbox, the warning window) is
-//  expressed as virtual hooks with harmless no-op defaults here,
-//  and is overridden ONLY by ProductStaff — Product simply never
-//  turns it on.
+//  The expiry-warning system (colour-coded ⚠ / ⛔ labels + the
+//  "Expiring Soon" checkbox) lives here as real, shared logic — any
+//  subclass that calls setupExpiringSoonFilter() from its own
+//  setupExtraUi() gets the checkbox + filtering; the colour-coding
+//  itself (formatExpiryText/decorateExpiryCell) is always on, since a
+//  plain expiry date benefits from it everywhere it's shown.
 // ═══════════════════════════════════════════════════════════════════
 class ProductBase : public BackBase<QWidget>
 {
@@ -124,12 +134,30 @@ protected:
     // ── Row-action buttons differ per page → each subclass builds them ──
     virtual void addActionButtons(int row, const ProductRecord &p) = 0;
 
-    // ── Expiry-warning system: OFF by default (used only by Product) ──
-    // ProductStaff overrides all four of these to turn the system on.
-    virtual bool    expiringSoonFilterActive() const { return false; }
+    // ── Recycle Bin: OFF by default, so Product/ProductStaff/FrontProduct
+    //    only ever list active (non-deleted) products. ProductRecycleBin
+    //    overrides this to true so the exact same fetch/count queries
+    //    list soft-deleted rows instead — no query duplication needed.
+    virtual bool showDeletedOnly() const { return false; }
+
+    // ── Expiry-warning system: real shared logic, not just a hook.
+    //    expiringSoonFilterActive() reflects whichever subclass has
+    //    called setupExpiringSoonFilter() (see below) — stays "off"
+    //    (false) for any page that never calls it, e.g. FrontProduct
+    //    and ProductRecycleBin. formatExpiryText()/decorateExpiryCell()
+    //    show the ⚠/⛔ colour-coding unconditionally, since a plain
+    //    expiry date benefits from it on every page that has one.
+    virtual bool    expiringSoonFilterActive() const;
     virtual int     expiryWarningWindowDays()  const { return 5; }
     virtual QString formatExpiryText(const ProductRecord &p, int daysLeft) const;
     virtual void    decorateExpiryCell(QTableWidgetItem *item, int daysLeft) const;
+
+    // Builds the "⚠ Expiring Soon (≤N days)" checkbox next to the
+    // category filter and wires it to onExpiringSoonToggled(). Call
+    // this from a subclass's setupExtraUi() to turn the filter on for
+    // that page (Product and ProductStaff both do; FrontProduct and
+    // ProductRecycleBin don't, so they simply never show the checkbox).
+    void setupExpiringSoonFilter();
 
     // ── Optional extension point for subclass-only widgets/signals ────
     // (e.g. ProductStaff's "Add Product" button, the expiry checkbox)
@@ -149,7 +177,24 @@ protected:
                                         bool expiringSoonOnly) const;
     int  countProducts(const QString &search, const QString &category,
                         bool expiringSoonOnly) const;
-    bool deleteProductFromDb(int id) const;
+
+    // ── Recycle Bin DB operations ───────────────────────────────
+    // Delete no longer removes the row: it soft-deletes (is_deleted = 1,
+    // deleted_at = now) so the product moves to the Recycle Bin and can
+    // still be restored. Only permanentDeleteProductFromDb() actually
+    // removes the row from the table.
+    bool softDeleteProductFromDb(int id) const;
+    bool restoreProductFromDb(int id) const;
+    bool permanentDeleteProductFromDb(int id) const;
+
+    // Soft-deletes (moves to Recycle Bin) every active product whose
+    // expiry_date is a valid, already-passed date. Products with no
+    // expiry_date set (NULL/empty) are never matched by this query, so
+    // they never auto-expire — only delete/restore ever touches them.
+    // Shared by Product and ProductStaff so both stay in sync with the
+    // same Recycle Bin. Returns the number of products auto-removed.
+    int autoRemoveExpiredProducts() const;
+
     static ProductRecord fetchById(int id);
 
     void setRowData(int row, const ProductRecord &p);
@@ -162,13 +207,20 @@ protected:
     int m_currentPage = 0;   // zero-indexed
     int m_totalCount  = 0;
 
+    // Owned by whichever subclass calls setupExpiringSoonFilter(); stays
+    // nullptr (and expiringSoonFilterActive() stays false) otherwise.
+    QCheckBox *m_chkExpiringSoon = nullptr;
+
 protected slots:
     void onSearchChanged(const QString &text);
     void onFilterCategoryChanged(int index);
     void onClearSearch();
     void onNextPage();
     void onPrevPage();
-    void onDeleteProduct();
+    void onDeleteProduct();          // active list → soft-delete (send to Recycle Bin)
+    void onRestoreProduct();         // Recycle Bin → active list
+    void onPermanentDeleteProduct(); // Recycle Bin → gone for good
+    void onExpiringSoonToggled(bool checked);
 };
 
 #endif // PRODUCTBASE_H

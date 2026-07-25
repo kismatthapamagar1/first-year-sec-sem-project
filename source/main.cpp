@@ -88,61 +88,83 @@ const QVector<QString> kStatements = {
     );
     )sql"),
 
+    // NOTE on expiry_date below: perishable rows use date('now', '+N days')
+    // so the seed data is always realistic relative to whenever the app is
+    // first run (a handful land inside the default 5-day warning window,
+    // one is already overdue, the rest sit further out) - static dates would
+    // silently drift into the past and make every perishable item vanish
+    // into the Recycle Bin (via autoRemoveExpiredProducts) before anyone
+    // ever saw a warning. Genuinely non-perishable categories (Household,
+    // Stationery, Music) get expiry_date = NULL instead: ProductBase never
+    // matches an empty expiry_date in its "expiring soon" filter or its
+    // auto-expire query, so these items are excluded from the whole expiry
+    // system, exactly like a staff member ticking "Does not expire" would
+    // exclude them by hand.
     QStringLiteral(R"sql(
     INSERT OR IGNORE INTO products
         (id, product_name, category, unit, price, stock, expiry_date, status, supplier, sku)
     VALUES
-    (1,  'Rice',         'Grains',     'kg',     90.00,  5,   '2027-01-10', 'Low Stock',  'Nepal Agro',        'SKU001'),
-    (2,  'Sugar',        'Groceries',  'kg',     120.00, 80,  '2027-05-01', 'In Stock',   'Sweet Suppliers',   'SKU002'),
-    (3,  'Salt',         'Groceries',  'kg',     25.00,  200, '2028-03-15', 'High Stock', 'Everest Salt',      'SKU003'),
-    (4,  'Potato',       'Vegetables', 'kg',     60.00,  30,  '2026-06-15', 'Low Stock',  'Fresh Farm',        'SKU004'),
-    (5,  'Tomato',       'Vegetables', 'kg',     80.00,  45,  '2026-06-11', 'In Stock',   'Fresh Farm',        'SKU005'),
-    (6,  'Onion',        'Vegetables', 'kg',     70.00,  25,  '2026-06-20', 'Low Stock',  'Veggie Nepal',      'SKU006'),
-    (7,  'Milk',         'Dairy',      'litre',  110.00, 60,  '2026-06-08', 'In Stock',   'Dairy Nepal',       'SKU007'),
-    (8,  'Cheese',       'Dairy',      'pieces', 350.00, 15,  '2026-07-01', 'Low Stock',  'Dairy Nepal',       'SKU008'),
-    (9,  'Butter',       'Dairy',      'pieces', 250.00, 40,  '2026-08-01', 'In Stock',   'Dairy Nepal',       'SKU009'),
-    (10, 'Yogurt',       'Dairy',      'pieces', 90.00,  65,  '2026-06-09', 'In Stock',   'Fresh Dairy',       'SKU010'),
-    (11, 'Toothpaste',   'Cosmetics',  'pieces', 140.00, 90,  '2028-01-01', 'High Stock', 'Colgate Nepal',     'SKU011'),
-    (12, 'Soap',         'Cosmetics',  'pieces', 60.00,  150, '2028-01-01', 'High Stock', 'Clean Nepal',       'SKU012'),
-    (13, 'Shampoo',      'Cosmetics',  'bottle', 450.00, 70,  '2027-10-10', 'In Stock',   'Beauty Nepal',      'SKU013'),
-    (14, 'Face Wash',    'Cosmetics',  'pieces', 320.00, 20,  '2027-11-12', 'Low Stock',  'Glow Nepal',        'SKU014'),
-    (15, 'Body Lotion',  'Cosmetics',  'bottle', 500.00, 55,  '2027-12-01', 'In Stock',   'Beauty Nepal',      'SKU015'),
-    (16, 'Dish Wash',    'Cleaning',   'bottle', 180.00, 35,  '2027-09-09', 'In Stock',   'Sparkle Suppliers', 'SKU016'),
-    (17, 'Detergent',    'Cleaning',   'kg',     220.00, 95,  '2027-07-07', 'High Stock', 'Sparkle Suppliers', 'SKU017'),
-    (18, 'Floor Cleaner','Cleaning',   'bottle', 300.00, 45,  '2027-09-01', 'In Stock',   'Clean Nepal',       'SKU018'),
-    (19, 'Glass Cleaner','Cleaning',   'bottle', 280.00, 15,  '2027-12-12', 'Low Stock',  'Sparkle Suppliers', 'SKU019'),
-    (21, 'Bucket',       'Household',  'pieces', 250.00, 60,  '2030-01-01', 'In Stock',   'Home Nepal',        'SKU021'),
-    (22, 'Plate',        'Household',  'pieces', 120.00, 85,  '2030-01-01', 'High Stock', 'Kitchen Nepal',     'SKU022'),
-    (23, 'Cup',          'Household',  'pieces', 100.00, 100, '2030-01-01', 'High Stock', 'Kitchen Nepal',     'SKU023'),
-    (24, 'Biscuit',      'Snacks',     'pieces', 30.00,  170, '2026-09-01', 'High Stock', 'Snack Nepal',       'SKU024'),
-    (25, 'Chips',        'Snacks',     'pieces', 50.00,  130, '2026-08-01', 'High Stock', 'Snack Nepal',       'SKU025'),
-    (26, 'Noodles',      'Snacks',     'pieces', 25.00,  220, '2027-01-01', 'High Stock', 'Wai Wai',           'SKU026'),
-    (27, 'Juice',        'Beverages',  'bottle', 120.00, 65,  '2026-10-01', 'In Stock',   'Juice Nepal',       'SKU027'),
-    (28, 'Coke',         'Beverages',  'bottle', 110.00, 140, '2027-01-01', 'High Stock', 'Coca Cola Nepal',   'SKU028'),
-    (29, 'Fanta',        'Beverages',  'bottle', 110.00, 120, '2027-01-01', 'High Stock', 'Coca Cola Nepal',   'SKU029'),
-    (30, 'Sprite',       'Beverages',  'bottle', 110.00, 115, '2027-01-01', 'High Stock', 'Coca Cola Nepal',   'SKU030'),
-    (31, 'Tea',          'Beverages',  'box',    355.00, 40,  '2027-04-04', 'In Stock',   'Tea Nepal',         'SKU031'),
-    (32, 'Coffee',       'Beverages',  'box',    550.00, 28,  '2027-06-06', 'Low Stock',  'Coffee House',      'SKU032'),
-    (33, 'Bread',        'Bakery',     'pieces', 55.00,  22,  '2026-06-06', 'Low Stock',  'Bakery Nepal',      'SKU033'),
-    (34, 'Cake',         'Bakery',     'pieces', 850.00, 8,   '2026-06-07', 'Low Stock',  'Bakery Nepal',      'SKU034'),
-    (35, 'Eggs',         'Dairy',      'dozen',  220.00, 55,  '2026-06-09', 'In Stock',   'Poultry Nepal',     'SKU035'),
-    (36, 'Chicken',      'Meat',       'kg',     480.00, 35,  '2026-06-06', 'In Stock',   'Fresh Meat',        'SKU036'),
-    (37, 'Fish',         'Meat',       'kg',     620.00, 14,  '2026-06-06', 'Low Stock',  'Fresh Meat',        'SKU037'),
-    (38, 'Apple',        'Fruits',     'kg',     180.00, 50,  '2026-06-15', 'In Stock',   'Fruit Nepal',       'SKU038'),
-    (39, 'Banana',       'Fruits',     'dozen',  140.00, 45,  '2026-06-10', 'In Stock',   'Fruit Nepal',       'SKU039'),
-    (40, 'Orange',       'Fruits',     'kg',     220.00, 38,  '2026-06-12', 'In Stock',   'Fruit Nepal',       'SKU040'),
-    (41, 'Watermelon',   'Fruits',     'pieces', 350.00, 10,  '2026-06-08', 'Low Stock',  'Fruit Nepal',       'SKU041'),
-    (42, 'Cooking Oil',  'Groceries',  'litre',  340.00, 90,  '2027-07-07', 'High Stock', 'Oil Nepal',         'SKU042'),
-    (43, 'Pulses',       'Groceries',  'kg',     160.00, 75,  '2027-09-09', 'In Stock',   'Agro Nepal',        'SKU043'),
-    (44, 'Flour',        'Groceries',  'kg',     85.00,  95,  '2027-10-10', 'High Stock', 'Agro Nepal',        'SKU044'),
-    (45, 'Corn Flakes',  'Breakfast',  'box',    420.00, 25,  '2027-08-08', 'Low Stock',  'Breakfast Nepal',   'SKU045'),
-    (46, 'Oats',         'Breakfast',  'box',    380.00, 32,  '2027-07-07', 'In Stock',   'Breakfast Nepal',   'SKU046'),
-    (47, 'Notebook',     'Stationery', 'pieces', 80.00,  110, '2030-01-01', 'High Stock', 'Stationery Nepal',  'SKU047'),
-    (48, 'Pen',          'Stationery', 'pieces', 20.00,  250, '2030-01-01', 'High Stock', 'Stationery Nepal',  'SKU048'),
-    (49, 'Marker',       'Stationery', 'pieces', 60.00,  70,  '2030-01-01', 'In Stock',   'Stationery Nepal',  'SKU049'),
-    (50, 'Stapler',      'Stationery', 'pieces', 180.00, 18,  '2030-01-01', 'Low Stock',  'Stationery Nepal',  'SKU050'),
-    (51, 'Guitar',       'Music',      'piece',  5000.00,25,  '2026-08-01', 'In Stock',   'Farm',              'M3000');
+    (1,  'Rice',         'Grains',     'kg',     90.00,  5,   '2027-01-10',                 'Low Stock',  'Nepal Agro',        'SKU001'),
+    (2,  'Sugar',        'Groceries',  'kg',     120.00, 80,  '2027-05-01',                 'In Stock',   'Sweet Suppliers',   'SKU002'),
+    (3,  'Salt',         'Groceries',  'kg',     25.00,  200, '2028-03-15',                 'High Stock', 'Everest Salt',      'SKU003'),
+    (4,  'Potato',       'Vegetables', 'kg',     60.00,  30,  date('now', '+2 days'),       'Low Stock',  'Fresh Farm',        'SKU004'),
+    (5,  'Tomato',       'Vegetables', 'kg',     80.00,  45,  date('now', '+1 days'),       'In Stock',   'Fresh Farm',        'SKU005'),
+    (6,  'Onion',        'Vegetables', 'kg',     70.00,  25,  date('now', '+16 days'),      'Low Stock',  'Veggie Nepal',      'SKU006'),
+    (7,  'Milk',         'Dairy',      'litre',  110.00, 60,  date('now'),                  'In Stock',   'Dairy Nepal',       'SKU007'),
+    (8,  'Cheese',       'Dairy',      'pieces', 350.00, 15,  date('now', '+21 days'),      'Low Stock',  'Dairy Nepal',       'SKU008'),
+    (9,  'Butter',       'Dairy',      'pieces', 250.00, 40,  date('now', '+7 days'),       'In Stock',   'Dairy Nepal',       'SKU009'),
+    (10, 'Yogurt',       'Dairy',      'pieces', 90.00,  65,  date('now', '+4 days'),       'In Stock',   'Fresh Dairy',       'SKU010'),
+    (11, 'Toothpaste',   'Cosmetics',  'pieces', 140.00, 90,  '2028-01-01',                 'High Stock', 'Colgate Nepal',     'SKU011'),
+    (12, 'Soap',         'Cosmetics',  'pieces', 60.00,  150, '2028-01-01',                 'High Stock', 'Clean Nepal',       'SKU012'),
+    (13, 'Shampoo',      'Cosmetics',  'bottle', 450.00, 70,  '2027-10-10',                 'In Stock',   'Beauty Nepal',      'SKU013'),
+    (14, 'Face Wash',    'Cosmetics',  'pieces', 320.00, 20,  '2027-11-12',                 'Low Stock',  'Glow Nepal',        'SKU014'),
+    (15, 'Body Lotion',  'Cosmetics',  'bottle', 500.00, 55,  '2027-12-01',                 'In Stock',   'Beauty Nepal',      'SKU015'),
+    (16, 'Dish Wash',    'Cleaning',   'bottle', 180.00, 35,  '2027-09-09',                 'In Stock',   'Sparkle Suppliers', 'SKU016'),
+    (17, 'Detergent',    'Cleaning',   'kg',     220.00, 95,  '2027-07-07',                 'High Stock', 'Sparkle Suppliers', 'SKU017'),
+    (18, 'Floor Cleaner','Cleaning',   'bottle', 300.00, 45,  '2027-09-01',                 'In Stock',   'Clean Nepal',       'SKU018'),
+    (19, 'Glass Cleaner','Cleaning',   'bottle', 280.00, 15,  '2027-12-12',                 'Low Stock',  'Sparkle Suppliers', 'SKU019'),
+    (21, 'Bucket',       'Household',  'pieces', 250.00, 60,  NULL,                         'In Stock',   'Home Nepal',        'SKU021'),
+    (22, 'Plate',        'Household',  'pieces', 120.00, 85,  NULL,                         'High Stock', 'Kitchen Nepal',     'SKU022'),
+    (23, 'Cup',          'Household',  'pieces', 100.00, 100, NULL,                         'High Stock', 'Kitchen Nepal',     'SKU023'),
+    (24, 'Biscuit',      'Snacks',     'pieces', 30.00,  170, date('now', '+3 days'),       'High Stock', 'Snack Nepal',       'SKU024'),
+    (25, 'Chips',        'Snacks',     'pieces', 50.00,  130, date('now', '+23 days'),      'High Stock', 'Snack Nepal',       'SKU025'),
+    (26, 'Noodles',      'Snacks',     'pieces', 25.00,  220, '2027-01-01',                 'High Stock', 'Wai Wai',           'SKU026'),
+    (27, 'Juice',        'Beverages',  'bottle', 120.00, 65,  '2026-10-01',                 'In Stock',   'Juice Nepal',       'SKU027'),
+    (28, 'Coke',         'Beverages',  'bottle', 110.00, 140, '2027-01-01',                 'High Stock', 'Coca Cola Nepal',   'SKU028'),
+    (29, 'Fanta',        'Beverages',  'bottle', 110.00, 120, '2027-01-01',                 'High Stock', 'Coca Cola Nepal',   'SKU029'),
+    (30, 'Sprite',       'Beverages',  'bottle', 110.00, 115, '2027-01-01',                 'High Stock', 'Coca Cola Nepal',   'SKU030'),
+    (31, 'Tea',          'Beverages',  'box',    355.00, 40,  '2027-04-04',                 'In Stock',   'Tea Nepal',         'SKU031'),
+    (32, 'Coffee',       'Beverages',  'box',    550.00, 28,  '2027-06-06',                 'Low Stock',  'Coffee House',      'SKU032'),
+    (33, 'Bread',        'Bakery',     'pieces', 55.00,  22,  date('now', '+1 days'),       'Low Stock',  'Bakery Nepal',      'SKU033'),
+    (34, 'Cake',         'Bakery',     'pieces', 850.00, 8,   date('now', '+5 days'),       'Low Stock',  'Bakery Nepal',      'SKU034'),
+    (35, 'Eggs',         'Dairy',      'dozen',  220.00, 55,  date('now', '+5 days'),       'In Stock',   'Poultry Nepal',     'SKU035'),
+    (36, 'Chicken',      'Meat',       'kg',     480.00, 35,  date('now', '+1 days'),       'In Stock',   'Fresh Meat',        'SKU036'),
+    (37, 'Fish',         'Meat',       'kg',     620.00, 14,  date('now', '+2 days'),       'Low Stock',  'Fresh Meat',        'SKU037'),
+    (38, 'Apple',        'Fruits',     'kg',     180.00, 50,  date('now', '+16 days'),      'In Stock',   'Fruit Nepal',       'SKU038'),
+    (39, 'Banana',       'Fruits',     'dozen',  140.00, 45,  date('now', '+3 days'),       'In Stock',   'Fruit Nepal',       'SKU039'),
+    (40, 'Orange',       'Fruits',     'kg',     220.00, 38,  date('now', '+11 days'),      'In Stock',   'Fruit Nepal',       'SKU040'),
+    (41, 'Watermelon',   'Fruits',     'pieces', 350.00, 10,  date('now', '+1 days'),       'Low Stock',  'Fruit Nepal',       'SKU041'),
+    (42, 'Cooking Oil',  'Groceries',  'litre',  340.00, 90,  '2027-07-07',                 'High Stock', 'Oil Nepal',         'SKU042'),
+    (43, 'Pulses',       'Groceries',  'kg',     160.00, 75,  '2027-09-09',                 'In Stock',   'Agro Nepal',        'SKU043'),
+    (44, 'Flour',        'Groceries',  'kg',     85.00,  95,  '2027-10-10',                 'High Stock', 'Agro Nepal',        'SKU044'),
+    (45, 'Corn Flakes',  'Breakfast',  'box',    420.00, 25,  '2027-08-08',                 'Low Stock',  'Breakfast Nepal',   'SKU045'),
+    (46, 'Oats',         'Breakfast',  'box',    380.00, 32,  '2027-07-07',                 'In Stock',   'Breakfast Nepal',   'SKU046'),
+    (47, 'Notebook',     'Stationery', 'pieces', 80.00,  110, NULL,                         'High Stock', 'Stationery Nepal',  'SKU047'),
+    (48, 'Pen',          'Stationery', 'pieces', 20.00,  250, NULL,                         'High Stock', 'Stationery Nepal',  'SKU048'),
+    (49, 'Marker',       'Stationery', 'pieces', 60.00,  70,  NULL,                         'In Stock',   'Stationery Nepal',  'SKU049'),
+    (50, 'Stapler',      'Stationery', 'pieces', 180.00, 18,  NULL,                         'Low Stock',  'Stationery Nepal',  'SKU050'),
+    (51, 'Guitar',       'Music',      'piece',  5000.00,25,  NULL,                         'In Stock',   'Farm',              'M3000');
     )sql"),
+
+    // ── products: Recycle Bin support ───────────────────────────
+    // is_deleted = 0/1 flags a soft-deleted (recycled) product;
+    // deleted_at records when it was deleted (manually or via
+    // auto-expiry). Kept as ALTER TABLE (like pending_requests.picture
+    // above) so anyone with an existing bazar1.db picks these up too —
+    // the "duplicate column name" case on later launches is already
+    // handled as non-fatal below.
+    QStringLiteral(R"sql(ALTER TABLE products ADD COLUMN is_deleted INTEGER DEFAULT 0;)sql"),
+    QStringLiteral(R"sql(ALTER TABLE products ADD COLUMN deleted_at TEXT;)sql"),
 
     // ── suppliers ────────────────────────────────────────────────
     QStringLiteral(R"sql(

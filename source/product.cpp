@@ -9,6 +9,7 @@
 
 #include "../include/product.h"
 #include "../ui/ui_product.h"
+#include "../include/productrecyclebin.h"
 
 #include <QHBoxLayout>
 #include <QTableWidget>
@@ -24,6 +25,13 @@ Product::Product(QWidget *parent)
 {
     ui->setupUi(this);
 
+    // Auto-remove already-expired products (moves them to the Recycle
+    // Bin) BEFORE the table's first load, same as ProductStaff — so the
+    // admin page never shows a product that expired yesterday still
+    // sitting in the active list. Products without an expiry date are
+    // never touched by this (see ProductBase::autoRemoveExpiredProducts).
+    autoRemoveExpiredProducts();
+
     // Common wiring (table columns, search/filter/pagination signals,
     // initial load) happens here, once this object's own widgets exist.
     initializeCommonUi();
@@ -33,11 +41,32 @@ Product::Product(QWidget *parent)
     // this window is enough: AdminDashboard is already open underneath
     // it (see admindashboard.cpp's handleProducts_clicked()).
     wireBackButton(ui->btnBackToDashboard);
+
+    connect(ui->btnRecycleBin, &QPushButton::clicked, this, &Product::openRecycleBin);
 }
 
 Product::~Product()
 {
     delete ui;
+}
+
+void Product::openRecycleBin()
+{
+    // Same ProductBase-derived page pattern, filtered to soft-deleted
+    // rows only (see ProductRecycleBin::showDeletedOnly()). Refresh this
+    // page's own table when the Recycle Bin window closes, in case
+    // anything was restored — a restored product should reappear here.
+    auto *bin = new ProductRecycleBin();
+    bin->setAttribute(Qt::WA_DeleteOnClose);
+    connect(bin, &QObject::destroyed, this, &Product::loadProducts);
+    bin->show();
+}
+
+// ── Turns on the same "⚠ Expiring Soon" checkbox + colour-coded
+//    warnings that ProductStaff has, via the shared ProductBase helper.
+void Product::setupExtraUi()
+{
+    setupExpiringSoonFilter();
 }
 
 // ── ProductBase widget accessors ───────────────────────────────────

@@ -27,6 +27,7 @@ public:
 private slots:
     void onGenerateSku();
     void onAccept();
+    void onNoExpiryToggled(bool checked);
 
 private:
     void setupUi();
@@ -43,6 +44,7 @@ private:
     QLineEdit   *txtPrice    = nullptr;
     QSpinBox    *spnStock    = nullptr;
     QDateEdit   *deExpiry    = nullptr;
+    QCheckBox   *chkNoExpiry = nullptr;
     QComboBox   *cmbStatus   = nullptr;
     QLineEdit   *txtSupplier = nullptr;
     QLineEdit   *txtSku      = nullptr;
@@ -88,31 +90,27 @@ protected:
 
     void addActionButtons(int row, const ProductRecord &p) override;
 
-    // ── Expiry-warning system lives HERE (overridden from ProductBase) ──
-    bool    expiringSoonFilterActive() const override;
-    int     expiryWarningWindowDays()  const override;
-    QString formatExpiryText(const ProductRecord &p, int daysLeft) const override;
-    void    decorateExpiryCell(QTableWidgetItem *item, int daysLeft) const override;
-
-    // ── Staff-only extras: Add button + expiry-soon checkbox ──────────
+    // ── Staff-only extras: Add button + expiry-soon checkbox. The
+    //    checkbox itself is built by ProductBase::setupExpiringSoonFilter()
+    //    — formatExpiryText()/decorateExpiryCell()/expiryWarningWindowDays()
+    //    all now live there too, shared with the Product admin page.
     void setupExtraUi() override;
-    void connectExtraSignals() override;
 
 private slots:
     void onAddProduct();
     void onEditProduct();
     void onTableDoubleClicked(int row, int column);
-    void onExpiringSoonToggled(bool checked);
+    void openRecycleBin();
 
 private:
     bool saveProduct(const ProductRecord &p);
     bool updateProductInDb(const ProductRecord &p);
 
-    // Expiry-warning threshold: products expiring within this many
-    // days get flagged amber; 0/negative days-left is always red.
-    static constexpr int EXPIRY_WARNING_DAYS = 5;
-
-    QCheckBox *m_chkExpiringSoon = nullptr;
+    // autoRemoveExpiredProducts() now lives on ProductBase (shared with
+    // Product's admin page too) — see productbase.h. Both pages call the
+    // same inherited implementation. Same for the expiry-warning window,
+    // the checkbox, and onExpiringSoonToggled() — all moved to
+    // ProductBase so Product and ProductStaff share one implementation.
 
     Ui::ProductStaff *ui;
 };

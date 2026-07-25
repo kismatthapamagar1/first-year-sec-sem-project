@@ -11,6 +11,7 @@
 
 #include "../include/productstaff.h"
 #include "../ui/ui_productstaff.h"
+#include "../include/productrecyclebin.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -28,6 +29,7 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QColor>
+#include <QDebug>
 #include <QFont>
 #include <QLineEdit>
 #include <QComboBox>
@@ -37,8 +39,6 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <climits>
-
-constexpr int ProductStaff::EXPIRY_WARNING_DAYS;   // out-of-class definition (C++17 odr-use safety)
 
 // ═══════════════════════════════════════════════════════════════════
 //  Luxury theme palette (Burgundy / Garnet) — used for the bits of UI
@@ -127,6 +127,19 @@ void ProductStaffDialog::setupUi()
     deExpiry->setDate(QDate::currentDate().addYears(1));
     deExpiry->setMinimumDate(QDate(2000, 1, 1));
 
+    // Not every product expires — stationery, hardware, electronics,
+    // household durables, etc. Checking this disables/clears the date
+    // field and the product is saved with no expiry_date at all, so it
+    // never shows a warning and never gets auto-removed by
+    // ProductBase::autoRemoveExpiredProducts() (that query only ever
+    // touches products that actually HAVE an expiry_date).
+    chkNoExpiry = new QCheckBox("Does not expire", this);
+    connect(chkNoExpiry, &QCheckBox::toggled, this, &ProductStaffDialog::onNoExpiryToggled);
+
+    auto *expiryRow = new QHBoxLayout;
+    expiryRow->addWidget(deExpiry);
+    expiryRow->addWidget(chkNoExpiry);
+
     cmbStatus = new QComboBox(this);
     cmbStatus->addItems({"In Stock", "Low Stock", "High Stock", "Out Of Stock"});
     txtSupplier = new QLineEdit(this);
@@ -165,7 +178,7 @@ void ProductStaffDialog::setupUi()
     form->addRow(makeLabel("Unit"),           cmbUnit);
     form->addRow(makeLabel("Price (Rs.) *"),  txtPrice);
     form->addRow(makeLabel("Stock *"),        spnStock);
-    form->addRow(makeLabel("Expiry Date"),    deExpiry);
+    form->addRow(makeLabel("Expiry Date"),    expiryRow);
     form->addRow(makeLabel("Status"),         cmbStatus);
     form->addRow(makeLabel("Supplier"),       txtSupplier);
     form->addRow(makeLabel("SKU"),            skuRow);
@@ -246,6 +259,9 @@ void ProductStaffDialog::populateFields(const ProductRecord &p)
     if (!p.expiryDate().isEmpty()) {
         QDate d = QDate::fromString(p.expiryDate(), "yyyy-MM-dd");
         if (d.isValid()) deExpiry->setDate(d);
+        chkNoExpiry->setChecked(false);
+    } else {
+        chkNoExpiry->setChecked(true);   // onNoExpiryToggled() disables deExpiry
     }
 
     int stIdx = cmbStatus->findText(p.status());
@@ -279,6 +295,11 @@ void ProductStaffDialog::onGenerateSku()
     txtSku->setText(generateSku());
 }
 
+void ProductStaffDialog::onNoExpiryToggled(bool checked)
+{
+    deExpiry->setDisabled(checked);
+}
+
 bool ProductStaffDialog::validateInputs()
 {
     if (txtName->text().trimmed().isEmpty()) {
@@ -310,7 +331,7 @@ ProductRecord ProductStaffDialog::getProduct() const
     p.setUnit(cmbUnit->currentText().trimmed());
     p.setPrice(txtPrice->text().toDouble());
     p.setStock(spnStock->value());
-    p.setExpiryDate(deExpiry->date().toString("yyyy-MM-dd"));
+    p.setExpiryDate(chkNoExpiry->isChecked() ? QString() : deExpiry->date().toString("yyyy-MM-dd"));
     p.setStatus(cmbStatus->currentText());
     p.setSupplier(txtSupplier->text().trimmed());
     p.setSku(txtSku->text().trimmed());
@@ -330,6 +351,8 @@ ProductStaff::ProductStaff(QWidget *parent)
             this,              &ProductStaff::onAddProduct);
     connect(ui->tblProducts,   &QTableWidget::cellDoubleClicked,
             this,              &ProductStaff::onTableDoubleClicked);
+    connect(ui->btnRecycleBin, &QPushButton::clicked,
+            this,              &ProductStaff::openRecycleBin);
 
     // "Back to Dashboard" simply closes this window. Because
     // StaffDashboard constructs this page with no parent and
@@ -339,8 +362,13 @@ ProductStaff::ProductStaff(QWidget *parent)
     connect(ui->btnBackDashboard, &QPushButton::clicked,
             this,                 &QWidget::close);
 
+    // Auto-remove already-expired products (moves them to the Recycle Bin)
+    // BEFORE the table's first load, so the page never shows a product
+    // that expired yesterday still sitting in the active list.
+    autoRemoveExpiredProducts();
+
     // Common wiring (columns, search/filter/pagination, initial load)
-    // + setupExtraUi()/connectExtraSignals() below (expiry checkbox).
+    // + setupExtraUi() below (expiry checkbox, via ProductBase).
     initializeCommonUi();
 }
 
@@ -360,71 +388,16 @@ QLabel*       ProductStaff::pageInfoLabel()  const { return ui->lblPageInfo; }
 QLabel*       ProductStaff::statusBarLabel() const { return ui->lblStatusBar; }
 QLabel*       ProductStaff::totalLabel()     const { return ui->lblTotalProducts; }
 
-// ── Staff-only extras: expiry-soon checkbox, inserted next to the
-//    category filter so the .ui file doesn't need hand-editing ──────
+// ── Staff-only extras: expiry-soon checkbox, built by the shared
+//    ProductBase helper (Product's admin page calls the same helper) ──
 void ProductStaff::setupExtraUi()
 {
-    m_chkExpiringSoon = new QCheckBox(
-        QString("⚠ Expiring Soon (≤%1 days)").arg(EXPIRY_WARNING_DAYS), this);
-
-    if (auto *filterLayout = ui->cmbFilterCategory->parentWidget()
-                                 ? ui->cmbFilterCategory->parentWidget()->layout()
-                                 : nullptr) {
-        filterLayout->addWidget(m_chkExpiringSoon);
-    }
+    setupExpiringSoonFilter();
 }
 
-void ProductStaff::connectExtraSignals()
-{
-    connect(m_chkExpiringSoon, &QCheckBox::toggled,
-            this,              &ProductStaff::onExpiringSoonToggled);
-}
-
-// ── Expiry-warning system (moved here from the admin Product page) ──
-bool ProductStaff::expiringSoonFilterActive() const
-{
-    return m_chkExpiringSoon && m_chkExpiringSoon->isChecked();
-}
-
-int ProductStaff::expiryWarningWindowDays() const
-{
-    return EXPIRY_WARNING_DAYS;
-}
-
-QString ProductStaff::formatExpiryText(const ProductRecord &p, int daysLeft) const
-{
-    if (p.expiryDate().isEmpty())
-        return QStringLiteral("—");
-
-    if (daysLeft == INT_MIN)
-        return p.expiryDate();
-    if (daysLeft < 0)
-        return QStringLiteral("⛔ Expired");
-    if (daysLeft == 0)
-        return QStringLiteral("⛔ Today");
-    if (daysLeft == 1)
-        return QStringLiteral("⛔ Tomorrow");
-    if (daysLeft <= EXPIRY_WARNING_DAYS)
-        return QString("⚠ %1 days").arg(daysLeft);
-
-    return p.expiryDate();
-}
-
-void ProductStaff::decorateExpiryCell(QTableWidgetItem *item, int daysLeft) const
-{
-    if (daysLeft == INT_MIN)
-        return;
-
-    if (daysLeft <= 1) {
-        item->setForeground(QColor(Theme::Garnet));
-        item->setBackground(QColor(Theme::GarnetBg));
-        QFont f; f.setBold(true);
-        item->setFont(f);
-    } else if (daysLeft <= EXPIRY_WARNING_DAYS) {
-        item->setForeground(QColor(Theme::WarningTxt));
-        item->setBackground(QColor(Theme::WarningBg));
-    }
-}
+// formatExpiryText()/decorateExpiryCell()/expiryWarningWindowDays()/
+// expiringSoonFilterActive() all now live on ProductBase, shared with
+// the Product admin page — see productbase.cpp.
 
 // ── Row actions: Edit + Delete (Delete's slot lives in base) ───────
 void ProductStaff::addActionButtons(int row, const ProductRecord &p)
@@ -529,6 +502,17 @@ bool ProductStaff::updateProductInDb(const ProductRecord &p)
 // ─────────────────────────────────────────────────────────────────
 //  SLOTS specific to staff
 // ─────────────────────────────────────────────────────────────────
+void ProductStaff::openRecycleBin()
+{
+    // Same pattern as Product::openRecycleBin() — a standalone window,
+    // refreshing this page's table when it closes in case something
+    // was restored.
+    auto *bin = new ProductRecycleBin();
+    bin->setAttribute(Qt::WA_DeleteOnClose);
+    connect(bin, &QObject::destroyed, this, &ProductStaff::loadProducts);
+    bin->show();
+}
+
 void ProductStaff::onAddProduct()
 {
     ProductStaffDialog dlg(this);
@@ -585,10 +569,4 @@ void ProductStaff::onTableDoubleClicked(int row, int /*column*/)
             loadProducts();
         }
     }
-}
-
-void ProductStaff::onExpiringSoonToggled(bool /*checked*/)
-{
-    m_currentPage = 0;   // new filter → back to page 1
-    loadProducts();
 }
