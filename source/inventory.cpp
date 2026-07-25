@@ -81,18 +81,18 @@ void inventory::loadInventoryData(int page)
 
     QSqlQuery query;
     QString sql = "SELECT id, product_name, category, unit, price, stock, "
-                  "expiry_date, supplier, sku FROM products ";
+                  "expiry_date, supplier, sku FROM products "
+                  "WHERE (is_deleted IS NULL OR is_deleted = 0) ";
 
     if (currentFilter == "Low Stock")
-        sql += "WHERE stock > 0 AND stock <= :low ";
+        sql += "AND stock > 0 AND stock <= :low ";
     else if (currentFilter == "High Stock")
-        sql += "WHERE stock > :high ";
+        sql += "AND stock > :high ";
     else if (currentFilter == "Out Of Stock")
-        sql += "WHERE stock <= 0 ";
-    // currentFilter == "" (Total Products) -> no WHERE clause
+        sql += "AND stock <= 0 ";
+    // currentFilter == "" (Total Products) -> no extra condition
 
     sql += "ORDER BY id LIMIT :limit OFFSET :offset";
-
     query.prepare(sql);
 
     if (currentFilter == "Low Stock")

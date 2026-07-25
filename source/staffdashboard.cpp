@@ -189,8 +189,8 @@ void StaffDashboard::loadCurrentUserInfo()
     if (m_staffId < 0) {
         qWarning() << "StaffDashboard: no staffId supplied, cannot personalize dashboard";
         ui->welcomeLabel->setText(m_staffName.isEmpty()
-                                       ? QStringLiteral("Welcome back, Staff!")
-                                       : QStringLiteral("Welcome back, %1!").arg(m_staffName));
+                                      ? QStringLiteral("Welcome back, Staff!")
+                                      : QStringLiteral("Welcome back, %1!").arg(m_staffName));
         return;
     }
 
@@ -223,8 +223,8 @@ void StaffDashboard::loadCurrentUserInfo()
 
     ui->welcomeLabel->setText(
         firstName.isEmpty() ? QStringLiteral("Welcome back, %1!").arg(
-                                   m_staffName.isEmpty() ? QStringLiteral("Staff") : m_staffName)
-                             : QStringLiteral("Welcome back, %1!").arg(firstName));
+                                  m_staffName.isEmpty() ? QStringLiteral("Staff") : m_staffName)
+                            : QStringLiteral("Welcome back, %1!").arg(firstName));
 
     // ── Avatar ───────────────────────────────────────────────────
     QPixmap avatar;
@@ -278,8 +278,8 @@ void StaffDashboard::loadCurrentUserInfo()
 QPixmap StaffDashboard::makeCircularPixmap(const QPixmap &source, int diameter)
 {
     QPixmap scaled = source.scaled(diameter, diameter,
-                                    Qt::KeepAspectRatioByExpanding,
-                                    Qt::SmoothTransformation);
+                                   Qt::KeepAspectRatioByExpanding,
+                                   Qt::SmoothTransformation);
 
     QPixmap circular(diameter, diameter);
     circular.fill(Qt::transparent);
@@ -305,15 +305,14 @@ QPixmap StaffDashboard::makeCircularPixmap(const QPixmap &source, int diameter)
 // ─────────────────────────────────────────────────────────────────
 void StaffDashboard::refreshDashboardStats()
 {
+    // Stock stats — computed the same way everywhere via StockService,
+    // which now excludes soft-deleted (Recycle Bin) products, matching
+    // ProductBase::countProducts() used by the Products page.
     InventoryStats stats = StockService::computeStats();
-    // Stock stats — now computed the same way everywhere via StockService
-    {
-        InventoryStats stats = StockService::computeStats();
-        lblTotalProducts->setText(QString::number(stats.total));
-        lblLowStockCount->setText(QString::number(stats.low));
-        lblOutOfStockCount->setText(QString::number(stats.out));
-        // If staff dashboard ever adds a High Stock card, use stats.high here too
-    }
+    lblTotalProducts->setText(QString::number(stats.total));
+    lblLowStockCount->setText(QString::number(stats.low));
+    lblOutOfStockCount->setText(QString::number(stats.out));
+    // If staff dashboard ever adds a High Stock card, use stats.high here too
 
     // Pending tasks — filtered by staff_id, same rule MyTasks uses, so
     // this card always matches what View Tasks shows.
@@ -333,7 +332,9 @@ void StaffDashboard::refreshDashboardStats()
     QSqlQuery q;
     q.prepare(
         "SELECT product_name, category, stock, unit, status "
-        "FROM products WHERE stock <= :t ORDER BY stock ASC");
+        "FROM products "
+        "WHERE (is_deleted IS NULL OR is_deleted = 0) AND stock > 0 AND stock <= :t "
+        "ORDER BY stock ASC");
     q.bindValue(":t", LOW_STOCK_THRESHOLD);
 
     if (!q.exec()) {
@@ -361,7 +362,12 @@ void StaffDashboard::refreshDashboardStats()
         auto *itemUnit = new QTableWidgetItem(q.value(3).toString());
         itemUnit->setTextAlignment(Qt::AlignCenter);
 
-        auto *itemStatus = new QTableWidgetItem(q.value(4).toString());
+        // Status is now derived live from stock (same rule ProductBase
+        // uses via StockService::statusForStock), instead of trusting
+        // the DB's possibly-stale 'status' column — this is what was
+        // producing "Cup: -100 stock / High Stock" before.
+        const QString liveStatus = StockService::statusForStock(stock);
+        auto *itemStatus = new QTableWidgetItem(liveStatus);
         itemStatus->setTextAlignment(Qt::AlignCenter);
         if (stock <= 0) {
             itemStatus->setForeground(QColor(Theme::Garnet));
@@ -382,20 +388,6 @@ void StaffDashboard::refreshDashboardStats()
 
 // ─────────────────────────────────────────────────────────────────
 //  Opens the Products page.
-//
-//  BUG THIS FIXES: the old code did `new ProductStaff(this)` and then
-//  ->show(). Handing a *parent* to a plain QWidget (not a QDialog,
-//  and without the Qt::Window flag) makes Qt treat it as a CHILD
-//  widget of StaffDashboard rather than its own top-level window —
-//  so it was literally being drawn on top of / inside the dashboard
-//  at position (0,0), which is exactly the "overlapping" you saw.
-//
-//  Fix: construct ProductStaff with NO parent so Qt always treats it
-//  as an independent top-level window, hide the dashboard while it's
-//  open (so only one screen is visible at a time, like a real page
-//  switch), and bring the dashboard back — refreshed — the instant
-//  the product page is closed, whether that happens via the new
-//  "Back to Dashboard" button or the window's own [X].
 // ─────────────────────────────────────────────────────────────────
 void StaffDashboard::handleProductsClicked()
 {
@@ -421,41 +413,11 @@ void StaffDashboard::handleProfileClicked()
 
 // ─────────────────────────────────────────────────────────────────
 //  Opens the My Tasks page.
-//
-//  REAL BUG THIS FIXES (the actual double-window cause): this slot
-//  used to be named `on_btnViewTasks_clicked`. Qt's uic-generated
-//  setupUi() calls QMetaObject::connectSlotsByName(this), which
-//  auto-connects any slot matching the pattern on_<objectName>_
-//  <signalName> to that widget's signal - with NO connect() needed.
-//  Since this slot's name matched btnViewTasks's clicked() signal
-//  exactly, it was being invoked TWICE per click: once from the
-//  auto-connection, and once from the explicit connect() in the
-//  constructor. That's why new MyTasks(...) ran twice and produced
-//  two windows - and why Products/Logout/Profile never had this
-//  problem, since none of their slot names match that convention.
-//  Renaming the slot away from on_btnViewTasks_clicked removes the
-//  auto-connect entirely, leaving only the one explicit connect().
-//
-//  SEPARATE BUG ALSO FIXED HERE: this used to do
-//  `new MyTasks(m_staffId, m_staffName, this)` and ->show(). Handing
-//  a *parent* to a QMainWindow (without Qt::Window) makes Qt treat it
-//  as a CHILD widget of StaffDashboard instead of its own top-level
-//  window, so even a single instance would've been drawn overlapping
-//  the dashboard rather than opening as a separate screen.
-//
-//  Fix: construct MyTasks with NO parent so Qt always treats it as an
-//  independent top-level window, hide the dashboard while it's open,
-//  and bring it back - refreshed, since Pending Tasks may have changed
-//  while we were away - the instant MyTasks closes, whether that
-//  happens via its own "Back to Dashboard" button or the window's [X].
 // ─────────────────────────────────────────────────────────────────
 void StaffDashboard::handleViewTasksClicked()
 {
     this->hide();
 
-    // Pass BOTH id and name straight into the constructor - MyTasks loads
-    // its own data as soon as it's built, so there's no separate
-    // loadTasksForStaff() call needed here.
     MyTasks *tasksPage = new MyTasks(m_staffId, m_staffName); // no parent -> real top-level window
     tasksPage->setAttribute(Qt::WA_DeleteOnClose);
 

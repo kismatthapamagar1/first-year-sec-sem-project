@@ -96,7 +96,7 @@ void Billing::addProductToBill(const QString &code)
 
     if (!query.exec() || !query.next()) {
         QMessageBox::warning(this, tr("Product Not Found"),
-                              tr("No product matches code:\n%1").arg(code));
+                             tr("No product matches code:\n%1").arg(code));
         return;
     }
 
@@ -108,7 +108,7 @@ void Billing::addProductToBill(const QString &code)
 
     if (stock <= 0) {
         QMessageBox::warning(this, tr("Out of Stock"),
-                              tr("%1 is currently out of stock.").arg(name));
+                             tr("%1 is currently out of stock.").arg(name));
         return;
     }
 
@@ -152,7 +152,7 @@ void Billing::addProductToBill(const QString &code)
 
     auto *removeBtn = new QPushButton(tr("Remove"));
     removeBtn->setStyleSheet("QPushButton { background-color: #c0392b; color: white; border: none; "
-                              "border-radius: 3px; padding: 4px; } QPushButton:hover { background-color: #e74c3c; }");
+                             "border-radius: 3px; padding: 4px; } QPushButton:hover { background-color: #e74c3c; }");
     ui->billTable->setCellWidget(row, ColRemove, removeBtn);
     connect(removeBtn, &QPushButton::clicked, this, [this, removeBtn]() {
         for (int r = 0; r < ui->billTable->rowCount(); ++r) {
@@ -192,6 +192,16 @@ void Billing::recalcTotal()
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Generate bill: write a PDF invoice, decrement stock, clear the table
+//
+//  BUG FIX: this used to contain TWO separate loops that both ran
+//  "UPDATE products SET stock = stock - :qty", one after the other, so
+//  every sale silently deducted stock TWICE (e.g. selling 100 units of
+//  a product with 100 in stock left it at -100 instead of 0). The whole
+//  block is now a single pass — decrement stock, record the sale — done
+//  once per row, wrapped in one transaction so a failure partway through
+//  rolls back cleanly instead of leaving some rows updated and others not.
+//  The stock update also now floors at 0 (MAX(stock - :qty, 0)) as a
+//  safety net against ever going negative again.
 // ─────────────────────────────────────────────────────────────────────────
 void Billing::generateBill()
 {
@@ -200,7 +210,10 @@ void Billing::generateBill()
         QMessageBox::information(this, tr("Empty Bill"), tr("Scan at least one product first."));
         return;
     }
-    // 1. Decrement stock for every line item.
+
+    QSqlDatabase::database().transaction();
+
+    // 1. Decrement stock and record each sale — exactly once per line item.
     for (int r = 0; r < rowCount; ++r) {
         const QString sku = ui->billTable->item(r, ColSku)->text();
         const int productId = ui->billTable->item(r, ColSku)->data(Qt::UserRole).toInt();
@@ -210,7 +223,7 @@ void Billing::generateBill()
         const QString name = ui->billTable->item(r, ColName)->text();
 
         QSqlQuery update;
-        update.prepare("UPDATE products SET stock = stock - :qty WHERE sku = :sku");
+        update.prepare("UPDATE products SET stock = MAX(stock - :qty, 0) WHERE sku = :sku");
         update.bindValue(":qty", qty);
         update.bindValue(":sku", sku);
 
@@ -243,30 +256,13 @@ void Billing::generateBill()
             return;
         }
     }
-    QSqlDatabase::database().commit();
 
-    QSqlDatabase::database().transaction();
-
-    // 1. Decrement stock for every line item.
-    for (int r = 0; r < rowCount; ++r) {
-        const QString sku = ui->billTable->item(r, ColSku)->text();
-        auto *spin         = qobject_cast<QDoubleSpinBox *>(ui->billTable->cellWidget(r, ColQty));
-        const double qty   = spin ? spin->value() : 0.0;
-
-        QSqlQuery update;
-        update.prepare("UPDATE products SET stock = stock - :qty WHERE sku = :sku");
-        update.bindValue(":qty", qty);
-        update.bindValue(":sku", sku);
-
-        if (!update.exec()) {
-            QSqlDatabase::database().rollback();
-            QMessageBox::critical(this, tr("Database Error"),
-                                   tr("Could not update stock for %1:\n%2")
-                                       .arg(sku, update.lastError().text()));
-            return;
-        }
+    if (!QSqlDatabase::database().commit()) {
+        QMessageBox::critical(this, tr("Database Error"),
+                              tr("Could not finalize the sale:\n%1")
+                                  .arg(QSqlDatabase::database().lastError().text()));
+        return;
     }
-    QSqlDatabase::database().commit();
 
     // 2. Build a simple HTML invoice and print it straight to PDF.
     QString html = "<h2 style='color:#1a2a4a;'>Sajilo Bazar - Bill</h2>";
@@ -290,7 +286,7 @@ void Billing::generateBill()
 
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     const QString fileName = QString("%1/Bill_%2.pdf")
-                                  .arg(dir, QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"));
+                                 .arg(dir, QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"));
 
     QPdfWriter writer(fileName);
     writer.setPageSize(QPageSize(QPageSize::A5));
@@ -305,5 +301,5 @@ void Billing::generateBill()
     recalcTotal();
 
     QMessageBox::information(this, tr("Bill Generated"),
-                              tr("Bill saved to:\n%1\n\nStock has been updated.").arg(fileName));
+                             tr("Bill saved to:\n%1\n\nStock has been updated.").arg(fileName));
 }
