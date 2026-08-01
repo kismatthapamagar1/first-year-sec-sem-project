@@ -15,11 +15,11 @@
   </property>
   <property name="styleSheet">
    <string notr="true">
-QWidget {
-    background-color: #4d0026;
-    font-family: &quot;Segoe UI&quot;, sans-serif;
-    font-size: 13px;
-    color: #4A0F2B;
+   QWidget#Product {
+       background-color: #FFFFFF;   /* or #F7F4F5 to match your dashboard mainFrame */
+       font-family: "Segoe UI", sans-serif;
+       font-size: 13px;
+   }
 }
 QGroupBox {
     background-color: #FFFFFF;
