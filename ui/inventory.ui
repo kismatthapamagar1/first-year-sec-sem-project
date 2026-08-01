@@ -118,7 +118,8 @@
        </item>
        <item>
         <widget class="QTableWidget" name="inventoryTable">
-         <property name="styleSheet"><string>QTableWidget { background-color: #FFFFFF; border: 1px solid #E6DEE1; border-radius: 8px; gridline-color: #F5EEF0; font-size: 13px; } QTableWidget::item { padding: 8px; color: #4A0F2B; } QHeaderView::section { background-color: #4A0F2B; color: #FFFFFF; font-size: 11px; font-weight: bold; padding: 8px; border: none; } QTableWidget::item:selected { background-color: #F3E6EC; color: #4A0F2B; }</string></property>
+        <property name="styleSheet"><string>QTableWidget { background-color: #FFFFFF; border: 1px solid #E6DEE1; border-radius: 8px; gridline-color: #F5EEF0; font-size: 13px; selection-background-color: #F3E6EC; selection-color: #4A0F2B; } QTableWidget::item { padding: 8px; color: #4A0F2B; } QHeaderView::section { background-color: #4A0F2B; color: #FFFFFF; font-size: 11px; font-weight: bold; padding: 8px; border: none; }</string></property>
+
          <property name="rowCount"><number>0</number></property>
          <property name="columnCount"><number>10</number></property>
          <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
