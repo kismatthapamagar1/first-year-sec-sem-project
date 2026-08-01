@@ -23,15 +23,28 @@ Billing::Billing(QWidget *parent)
     ui->setupUi(this);
 
     // billTable cosmetics
+    // Fixed-width columns for content that doesn't need to grow;
+    // ColName (Product) stretches to absorb all leftover width so the
+    // table fills the window instead of stopping at a fixed pixel total.
     ui->billTable->horizontalHeader()->setStretchLastSection(false);
-    ui->billTable->setColumnWidth(ColSku, 80);
-    ui->billTable->setColumnWidth(ColName, 170);
-    ui->billTable->setColumnWidth(ColUnit, 70);
+
+    QHeaderView *header = ui->billTable->horizontalHeader();
+    header->setSectionResizeMode(ColSku,       QHeaderView::Fixed);
+    header->setSectionResizeMode(ColName,      QHeaderView::Stretch);
+    header->setSectionResizeMode(ColUnit,      QHeaderView::Fixed);
+    header->setSectionResizeMode(ColUnitPrice, QHeaderView::Fixed);
+    header->setSectionResizeMode(ColStock,     QHeaderView::Fixed);
+    header->setSectionResizeMode(ColQty,       QHeaderView::Fixed);
+    header->setSectionResizeMode(ColPrice,     QHeaderView::Fixed);
+    header->setSectionResizeMode(ColRemove,    QHeaderView::Fixed);
+
+    ui->billTable->setColumnWidth(ColSku, 100);
+    ui->billTable->setColumnWidth(ColUnit, 80);
     ui->billTable->setColumnWidth(ColUnitPrice, 100);
     ui->billTable->setColumnWidth(ColStock, 80);
-    ui->billTable->setColumnWidth(ColQty, 100);
+    ui->billTable->setColumnWidth(ColQty, 130);
     ui->billTable->setColumnWidth(ColPrice, 110);
-    ui->billTable->setColumnWidth(ColRemove, 100);
+    ui->billTable->setColumnWidth(ColRemove, 110);
     ui->billTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
     // Barcode scanning: works identically whether the input comes from a
@@ -170,9 +183,8 @@ void Billing::addProductToBill(const QString &code)
     const bool allowFraction = fractionalUnits.contains(unit.trimmed().toLower());
 
     auto *qtySpin = new QDoubleSpinBox;
-    qtySpin->setStyleSheet(
-        "QDoubleSpinBox { background-color: #ffffff; color: #4a1626; "
-        "border: 1px solid #660033; border-radius: 3px; }");
+    qtySpin->setFocusPolicy(Qt::StrongFocus);
+
     if (allowFraction) {
         qtySpin->setDecimals(2);
         qtySpin->setSingleStep(0.10);
@@ -186,6 +198,7 @@ void Billing::addProductToBill(const QString &code)
     }
     qtySpin->setMaximum(stock);
     ui->billTable->setCellWidget(row, ColQty, qtySpin);
+    ui->billTable->setRowHeight(row, 36);
     connect(qtySpin, &QDoubleSpinBox::valueChanged, this, [this, qtySpin]() {
         for (int r = 0; r < ui->billTable->rowCount(); ++r) {
             if (ui->billTable->cellWidget(r, ColQty) == qtySpin) {
