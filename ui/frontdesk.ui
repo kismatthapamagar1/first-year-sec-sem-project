@@ -367,7 +367,7 @@ border: 2px solid #C9A227;
             </sizepolicy>
            </property>
            <property name="styleSheet">
-            <string notr="true">QTableWidget { background-color: #ffffff; border: 1px solid #f0dde1; gridline-color: #f6ebee; font-size: 13px; color: #4a1626; } QHeaderView::section { background-color: #660033; color: white; padding: 6px; font-weight: bold; }</string>
+            <string notr="true">QTableWidget { background-color: #ffffff; border: 1px solid #f0dde1; gridline-color: #f6ebee; font-size: 13px; color: #4a1626; selection-background-color: #F3E6EC; selection-color: #660033; } QHeaderView::section { background-color: #660033; color: white; padding: 6px; font-weight: bold; }</string>
            </property>
           </widget>
          </item>
