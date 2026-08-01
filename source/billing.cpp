@@ -27,7 +27,6 @@ Billing::Billing(int staffId, const QString &staffName, QWidget *parent)
     // billTable cosmetics
     ui->billTable->horizontalHeader()->setStretchLastSection(false);
     ui->billTable->setColumnWidth(ColSku, 80);
-    ui->billTable->setColumnWidth(ColName, 170);
     ui->billTable->setColumnWidth(ColUnit, 70);
     ui->billTable->setColumnWidth(ColUnitPrice, 100);
     ui->billTable->setColumnWidth(ColStock, 80);
@@ -35,6 +34,20 @@ Billing::Billing(int staffId, const QString &staffName, QWidget *parent)
     ui->billTable->setColumnWidth(ColPrice, 110);
     ui->billTable->setColumnWidth(ColRemove, 100);
     ui->billTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    // Every column above is a fixed width. On a maximized/full-screen window
+    // that leaves a big empty gap after the last column instead of the table
+    // filling the available space. Let the Product column (the one column
+    // whose content length varies the most) stretch to soak up whatever room
+    // is left, while the rest stay pinned at their fixed widths.
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColName, QHeaderView::Stretch);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColSku, QHeaderView::Fixed);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColUnit, QHeaderView::Fixed);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColUnitPrice, QHeaderView::Fixed);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColStock, QHeaderView::Fixed);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColQty, QHeaderView::Fixed);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColPrice, QHeaderView::Fixed);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColRemove, QHeaderView::Fixed);
 
     // Barcode scanning: works identically whether the input comes from a
     // real USB scanner OR a phone running a "keyboard wedge" scanner app,
@@ -153,6 +166,7 @@ void Billing::addProductToBill(const QString &code)
 
     const int row = ui->billTable->rowCount();
     ui->billTable->insertRow(row);
+    ui->billTable->setRowHeight(row, 34);
 
     auto *skuItem = new QTableWidgetItem(sku);
     skuItem->setData(Qt::UserRole, query.value("id").toInt());  // stash product_id
@@ -181,6 +195,7 @@ void Billing::addProductToBill(const QString &code)
     qtySpin->setStyleSheet(
         "QDoubleSpinBox { background-color: #ffffff; color: #4a1626; "
         "border: 1px solid #660033; border-radius: 3px; }");
+    qtySpin->setMinimumHeight(28);
     if (allowFraction) {
         qtySpin->setDecimals(2);
         qtySpin->setSingleStep(0.10);
