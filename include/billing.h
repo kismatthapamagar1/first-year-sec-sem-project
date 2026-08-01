@@ -2,35 +2,24 @@
 #define BILLING_H
 
 #include <QMainWindow>
+#include <QString>
 
-QT_BEGIN_NAMESPACE
 namespace Ui {
 class Billing;
 }
-QT_END_NAMESPACE
 
 class Billing : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    explicit Billing(QWidget *parent = nullptr);
+    // Requires the logged-in frontdesk user's identity so that
+    // backToDashboard() can reconstruct the correct, personalized
+    // dashboard instead of a blank/anonymous one.
+    explicit Billing(int staffId, const QString &staffName, QWidget *parent = nullptr);
     ~Billing();
 
-private slots:
-    void onBarcodeScanned();   // fired when Enter is pressed in barcodeInput
-    void generateBill();       // "Generate Bill" button
-    void backToDashboard();    // "Back to Dashboard" button
-
-private:
-    Ui::Billing *ui;
-
-    void addProductToBill(const QString &code);
-    void recalcRowPrice(int row);
-    void recalcTotal();
-    void setupNameCompleter();
-
-    enum BillColumn {
+    enum Column {
         ColSku = 0,
         ColName,
         ColUnit,
@@ -40,6 +29,22 @@ private:
         ColPrice,
         ColRemove
     };
+
+private slots:
+    void onBarcodeScanned();
+    void generateBill();
+    void backToDashboard();
+
+private:
+    Ui::Billing *ui;
+
+    int     m_staffId;
+    QString m_staffName;
+
+    void setupNameCompleter();
+    void addProductToBill(const QString &code);
+    void recalcRowPrice(int row);
+    void recalcTotal();
 };
 
-#endif
+#endif // BILLING_H

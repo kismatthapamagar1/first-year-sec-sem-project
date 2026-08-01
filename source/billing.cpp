@@ -16,35 +16,24 @@
 #include <QCompleter>
 #include <QSet>
 
-Billing::Billing(QWidget *parent)
+Billing::Billing(int staffId, const QString &staffName, QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::Billing)
+    , m_staffId(staffId)
+    , m_staffName(staffName)
 {
     ui->setupUi(this);
 
     // billTable cosmetics
-    // Fixed-width columns for content that doesn't need to grow;
-    // ColName (Product) stretches to absorb all leftover width so the
-    // table fills the window instead of stopping at a fixed pixel total.
     ui->billTable->horizontalHeader()->setStretchLastSection(false);
-
-    QHeaderView *header = ui->billTable->horizontalHeader();
-    header->setSectionResizeMode(ColSku,       QHeaderView::Fixed);
-    header->setSectionResizeMode(ColName,      QHeaderView::Stretch);
-    header->setSectionResizeMode(ColUnit,      QHeaderView::Fixed);
-    header->setSectionResizeMode(ColUnitPrice, QHeaderView::Fixed);
-    header->setSectionResizeMode(ColStock,     QHeaderView::Fixed);
-    header->setSectionResizeMode(ColQty,       QHeaderView::Fixed);
-    header->setSectionResizeMode(ColPrice,     QHeaderView::Fixed);
-    header->setSectionResizeMode(ColRemove,    QHeaderView::Fixed);
-
-    ui->billTable->setColumnWidth(ColSku, 100);
-    ui->billTable->setColumnWidth(ColUnit, 80);
+    ui->billTable->setColumnWidth(ColSku, 80);
+    ui->billTable->setColumnWidth(ColName, 170);
+    ui->billTable->setColumnWidth(ColUnit, 70);
     ui->billTable->setColumnWidth(ColUnitPrice, 100);
     ui->billTable->setColumnWidth(ColStock, 80);
-    ui->billTable->setColumnWidth(ColQty, 130);
+    ui->billTable->setColumnWidth(ColQty, 100);
     ui->billTable->setColumnWidth(ColPrice, 110);
-    ui->billTable->setColumnWidth(ColRemove, 110);
+    ui->billTable->setColumnWidth(ColRemove, 100);
     ui->billTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
     // Barcode scanning: works identically whether the input comes from a
@@ -92,10 +81,16 @@ Billing::~Billing()
 // ─────────────────────────────────────────────────────────────────────────
 void Billing::backToDashboard()
 {
-    // Same convention as frontdesk::openBillingWindow(): the window being
-    // opened does not show itself in its constructor, the opener does.
-    // This keeps exactly one window visible at a time.
-    frontdesk *dashboard = new frontdesk();
+    // FIX: frontdesk::openBillingWindow() calls this->close() on the
+    // dashboard, and since frontdesk is created with Qt::WA_DeleteOnClose,
+    // that dashboard object is genuinely destroyed, not just hidden — so
+    // there's nothing left to "return to." This used to call the default
+    // frontdesk() constructor, which has no staffId/staffName at all,
+    // producing a blank dashboard that looked like nobody was logged in.
+    // Now Billing carries the same staffId/staffName it was constructed
+    // with (see frontdesk::openBillingWindow()) and passes them straight
+    // through, so the dashboard that reappears belongs to the same user.
+    frontdesk *dashboard = new frontdesk(m_staffId, m_staffName);
     dashboard->setAttribute(Qt::WA_DeleteOnClose);
     dashboard->show();
 
@@ -183,8 +178,9 @@ void Billing::addProductToBill(const QString &code)
     const bool allowFraction = fractionalUnits.contains(unit.trimmed().toLower());
 
     auto *qtySpin = new QDoubleSpinBox;
-    qtySpin->setFocusPolicy(Qt::StrongFocus);
-
+    qtySpin->setStyleSheet(
+        "QDoubleSpinBox { background-color: #ffffff; color: #4a1626; "
+        "border: 1px solid #660033; border-radius: 3px; }");
     if (allowFraction) {
         qtySpin->setDecimals(2);
         qtySpin->setSingleStep(0.10);
@@ -198,7 +194,6 @@ void Billing::addProductToBill(const QString &code)
     }
     qtySpin->setMaximum(stock);
     ui->billTable->setCellWidget(row, ColQty, qtySpin);
-    ui->billTable->setRowHeight(row, 36);
     connect(qtySpin, &QDoubleSpinBox::valueChanged, this, [this, qtySpin]() {
         for (int r = 0; r < ui->billTable->rowCount(); ++r) {
             if (ui->billTable->cellWidget(r, ColQty) == qtySpin) {
@@ -253,15 +248,13 @@ void Billing::recalcTotal()
 // ─────────────────────────────────────────────────────────────────────────
 //  Generate bill: write a PDF invoice, decrement stock, clear the table
 //
-//  BUG FIX: this used to contain TWO separate loops that both ran
-//  "UPDATE products SET stock = stock - :qty", one after the other, so
-//  every sale silently deducted stock TWICE (e.g. selling 100 units of
-//  a product with 100 in stock left it at -100 instead of 0). The whole
-//  block is now a single pass — decrement stock, record the sale — done
-//  once per row, wrapped in one transaction so a failure partway through
-//  rolls back cleanly instead of leaving some rows updated and others not.
-//  The stock update also now floors at 0 (MAX(stock - :qty, 0)) as a
-//  safety net against ever going negative again.
+//  BUG FIX (earlier): this used to contain TWO separate loops that both
+//  ran "UPDATE products SET stock = stock - :qty", one after the other,
+//  so every sale silently deducted stock TWICE. The whole block is now a
+//  single pass — decrement stock, record the sale — done once per row,
+//  wrapped in one transaction so a failure partway through rolls back
+//  cleanly instead of leaving some rows updated and others not. The stock
+//  update also floors at 0 (MAX(stock - :qty, 0)) as a safety net.
 // ─────────────────────────────────────────────────────────────────────────
 void Billing::generateBill()
 {

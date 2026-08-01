@@ -63,7 +63,13 @@ void frontdesk::openViewProductsWindow()
 
 void frontdesk::openBillingWindow()
 {
-    Billing *billingWindow = new Billing();
+    // FIX: was `new Billing()` — the default constructor — which carries
+    // no staffId/staffName at all. Since this window is closed (and, being
+    // WA_DeleteOnClose, destroyed) right after, Billing::backToDashboard()
+    // had nothing to reconstruct the dashboard from and produced a blank
+    // "no user logged in" dashboard. Now the current user's identity is
+    // passed straight into Billing so it can hand it back later.
+    Billing *billingWindow = new Billing(m_staffId, m_staffName);
     billingWindow->setAttribute(Qt::WA_DeleteOnClose);
     billingWindow->show();
     this->close();
