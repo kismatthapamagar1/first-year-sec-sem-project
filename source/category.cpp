@@ -29,6 +29,7 @@ category::category(QWidget *parent)
     , ui(new Ui::category)
 {
     ui->setupUi(this);
+    setWindowTitle("Sajilo-Bazar Categories Management");
 
     // NOTE: Column count, header labels, row height, sorting, colors and
     // all other static appearance now live entirely in category.ui. The

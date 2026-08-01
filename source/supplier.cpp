@@ -18,6 +18,7 @@ supplier::supplier(QWidget *parent)
     , ui(new Ui::supplier)
 {
     ui->setupUi(this);
+    setWindowTitle("Sajilo-Bazar Supplier Management");
 
     // Back to Dashboard — inherited from BackBase<QWidget>. Closing this
     // window is enough: AdminDashboard is already open underneath it

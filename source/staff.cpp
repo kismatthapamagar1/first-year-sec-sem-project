@@ -72,6 +72,8 @@ staff::staff(QWidget *parent)
     , ui(new Ui::staff)
 {
     ui->setupUi(this);
+    setWindowTitle("Sajilo-Bazar Staff Management");
+
 
     // Back to Dashboard — inherited from BackBase<QWidget>. Closing this
     // window is enough: AdminDashboard is already open underneath it
