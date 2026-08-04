@@ -26,6 +26,7 @@ Billing::Billing(int staffId, const QString &staffName, QWidget *parent)
 
     // billTable cosmetics
     ui->billTable->horizontalHeader()->setStretchLastSection(false);
+    ui->billTable->horizontalHeader()->setSectionResizeMode(ColName, QHeaderView::Stretch);
     ui->billTable->setColumnWidth(ColSku, 80);
     ui->billTable->setColumnWidth(ColUnit, 70);
     ui->billTable->setColumnWidth(ColUnitPrice, 100);
@@ -193,9 +194,49 @@ void Billing::addProductToBill(const QString &code)
 
     auto *qtySpin = new QDoubleSpinBox;
     qtySpin->setStyleSheet(
+
+        "QDoubleSpinBox {"
+        "   background-color: #ffffff; color: #4a1626;"
+        "   border: 1px solid #660033; border-radius: 3px;"
+        "   padding-right: 18px;"
+        "}"
+        "QDoubleSpinBox::up-button {"
+        "   subcontrol-origin: border; subcontrol-position: top right;"
+        "   width: 18px; height: 11px;"
+        "   border-left: 1px solid #660033; border-bottom: 1px solid #660033;"
+        "   border-top-right-radius: 3px;"
+        "   background-color: #660033;"
+        "}"
+        "QDoubleSpinBox::down-button {"
+        "   subcontrol-origin: border; subcontrol-position: bottom right;"
+        "   width: 18px; height: 11px;"
+        "   border-left: 1px solid #660033;"
+        "   border-bottom-right-radius: 3px;"
+        "   background-color: #660033;"
+        "}"
+        "QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {"
+        "   background-color: #8a1a4d;"
+        "}"
+        "QDoubleSpinBox::up-button:pressed, QDoubleSpinBox::down-button:pressed {"
+        "   background-color: #4a1626;"
+        "}"
+        "QDoubleSpinBox::up-arrow {"
+        "   width: 0; height: 0;"
+        "   border-left: 4px solid transparent;"
+        "   border-right: 4px solid transparent;"
+        "   border-bottom: 5px solid white;"
+        "}"
+        "QDoubleSpinBox::down-arrow {"
+        "   width: 0; height: 0;"
+        "   border-left: 4px solid transparent;"
+        "   border-right: 4px solid transparent;"
+        "   border-top: 5px solid white;"
+        "}"
+        );
         "QDoubleSpinBox { background-color: #ffffff; color: #4a1626; "
         "border: 1px solid #660033; border-radius: 3px; }");
     qtySpin->setMinimumHeight(28);
+
     if (allowFraction) {
         qtySpin->setDecimals(2);
         qtySpin->setSingleStep(0.10);
